@@ -2,6 +2,44 @@
 
 Cracking the synacor challange from [synacor address](https://challenge.synacor.com/).
 
+## VM
+
+Run is interrupted on either user input or when a break/watch point is hit. Then
+input is either interpreted by the VM debugger or passed to the running bin as user input. No protection is implemented for mixing VM commands with inputs, and invalid VM commands probably just die and kill the VM.
+
+exit (or ^D)
+: Stops the VM
+
+regs
+: Prints current registers & IP
+
+stack
+: Prints current stack
+
+breaks
+: Prints current break points
+
+cont
+: Continues to run (without changing existing user input)
+
+step
+: One step of the VM
+
+disass [addr] [count] (count decimal)
+: disassembles code or data from addr taking count number of 16 bit words.
+
+set [addr] [value]
+: writes address with value (0x8000 is r0)
+
+break [addr]
+: sets breakpoint on addr (hit when IP == addr)
+
+delete [addr]
+: deletes breakpoint of addr
+
+jump [addr]
+: writes addr into the IP
+
 # SPOILER ALERT
 
 __If you would like to work on this challange yourself, you have stop reading here..__
