@@ -1,6 +1,11 @@
 module Main where
 
-import Lib
+import IOSystem
+import Machine
+import System.Environment
 
 main :: IO ()
-main = someFunc
+main = do
+  putStrLn "invoke with filename.bin argument"
+  [filename] <- getArgs
+  boot filename >>= runMachineIO
