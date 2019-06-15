@@ -7,8 +7,9 @@ Cracking the synacor challange from [synacor address](https://challenge.synacor.
 Run is interrupted on either user input or when a break/watch point is hit. Then
 input is either interpreted by the VM debugger or passed to the running bin as user input. No protection is implemented for mixing VM commands with inputs, and invalid VM commands probably just die and kill the VM.
 
-exit (or ^D)
-: Stops the VM
+<dl>
+<dt>exit (or ^D)</dt>
+<dd>Stops the VM</dd>
 
 regs
 : Prints current registers & IP
@@ -39,6 +40,7 @@ delete [addr]
 
 jump [addr]
 : writes addr into the IP
+</dl>
 
 # SPOILER ALERT
 
