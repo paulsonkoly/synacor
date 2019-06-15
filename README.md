@@ -11,35 +11,35 @@ input is either interpreted by the VM debugger or passed to the running bin as u
 <dt>exit (or ^D)</dt>
 <dd>Stops the VM</dd>
 
-regs
-: Prints current registers & IP
+<dt>regs</dt>
+<dd>Prints current registers & IP</dd>
 
-stack
-: Prints current stack
+<dt>stack</dt>
+<dd>Prints current stack</dd>
 
-breaks
-: Prints current break points
+<dt>breaks</dt>
+<dd>Prints current break points</dd>
 
-cont
-: Continues to run (without changing existing user input)
+<dt>cont</dt>
+<dd>Continues to run (without changing existing user input)</dd>
 
-step
-: One step of the VM
+<dt>step</dt>
+<dd>One step of the VM</dd>
 
-disass [addr] [count] (count decimal)
-: disassembles code or data from addr taking count number of 16 bit words.
+<dt>disass [addr] [count] (count decimal)</dt>
+<dd>disassembles code or data from addr taking count number of 16 bit words.</dd>
 
-set [addr] [value]
-: writes address with value (0x8000 is r0)
+<dt>set [addr] [value]</dt>
+<dd>writes address with value (0x8000 is r0)</dd>
 
-break [addr]
-: sets breakpoint on addr (hit when IP == addr)
+<dt>break [addr]</dt>
+<dd>sets breakpoint on addr (hit when IP == addr)</dd>
 
-delete [addr]
-: deletes breakpoint of addr
+<dt>delete [addr]</dt>
+<dd>deletes breakpoint of addr</dd>
 
-jump [addr]
-: writes addr into the IP
+<dt>jump [addr]</dt>
+<dd>writes addr into the IP</dd>
 </dl>
 
 # SPOILER ALERT
