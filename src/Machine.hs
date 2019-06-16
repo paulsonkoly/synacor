@@ -3,7 +3,6 @@
 module Machine
   ( Machine(..)
   , mkMachine
-  , (<-|)
   , step
   , disass
   , disassCount
@@ -153,12 +152,6 @@ machineOpMatrix = V.fromList
     )
   , ("NOOP", [], \[] m@(Machine ip memory stack out) input -> (m, True))
   ]
-
-
-(<-|) :: Machine -> (Word16, Word16) -> Machine
-(<-|) m (addr, value) = m { memory = writeWord addr value (memory m) }
-
-infixl 9 <-|
 
 
 

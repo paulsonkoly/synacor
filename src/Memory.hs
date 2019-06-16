@@ -3,7 +3,6 @@ module Memory
   , mkMemory
   , readWord
   , writeWord
-  , (<-||)
   , readReg
   , loadMemory
   )
@@ -15,9 +14,6 @@ import qualified Data.Vector.Unboxed           as V
 import           Data.Word
 import           Data.Bits
 import qualified Data.ByteString               as BS
-import           System.IO
-import Debug.Trace
-import Numeric
 
 type Chunk = V.Vector Word16
 
@@ -53,18 +49,11 @@ readReg addr mem =
 
 writeWord :: Word16 -> Word16 -> Memory -> Memory
 writeWord addr value (Memory mem) =
-  (if addr <0x8000 then trace $showHex addr "" ++ " <- " ++ showHex value "" else id) $
   let (chunkAddr, chunkOff) = splitAddr addr
       chunk                 = fromMaybe mkChunk (M.lookup chunkAddr mem)
       chunk'                = chunk `V.unsafeUpd` [(chunkOff, value)]
   in  Memory $ M.insert chunkAddr chunk' mem
 
-
-(<-||) :: Memory -> (Word16, Word16) -> Memory
-(<-||) m (addr, value) = writeWord addr value m
-
-
-infixl 9 <-||
 
 splitAddr :: Word16 -> (Int, Int)
 splitAddr addr = fromIntegral addr `divMod` chunkSize
