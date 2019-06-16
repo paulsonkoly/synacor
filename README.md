@@ -22,6 +22,9 @@ __All numbers are in hex without the leading 0x prefix unless indicated otherwis
 <dt>breaks</dt>
 <dd>Prints current break points</dd>
 
+<dt>watches</dt>
+<dd>Prints current watch points</dd>
+
 <dt>cont</dt>
 <dd>Continues to run (without changing existing user input)</dd>
 
@@ -39,6 +42,12 @@ __All numbers are in hex without the leading 0x prefix unless indicated otherwis
 
 <dt>delete [addr]</dt>
 <dd>deletes breakpoint of addr</dd>
+
+<dt>watch [addr]</dt>
+<dd>sets watchpoint on addr (hit when addr is accessed (800? for registers) except code fetches)</dd>
+
+<dt>delwatch [addr]</dt>
+<dd>deletes watchpoint of addr</dd>
 
 <dt>jump [addr]</dt>
 <dd>writes addr into the IP</dd>

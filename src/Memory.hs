@@ -3,7 +3,6 @@ module Memory
   , mkMemory
   , readWord
   , writeWord
-  , readReg
   , loadMemory
   )
 where
@@ -41,12 +40,6 @@ readWord addr (Memory mem) =
         Nothing    -> 0
 
 
-readReg :: Word16 -> Memory -> Word16
-readReg addr mem =
-  let value = readWord addr mem
-  in if testBit value 15 then readWord value mem else value
-
-
 writeWord :: Word16 -> Word16 -> Memory -> Memory
 writeWord addr value (Memory mem) =
   let (chunkAddr, chunkOff) = splitAddr addr
@@ -73,10 +66,7 @@ loadMemory fn = do
   bs <- BS.readFile fn
   return $ (\(_, _, m) -> m) $ BS.foldl'
     (\(addr, bit, m) byte ->
-      ( addr + fromIntegral bit
-      , 1 - bit
-      , writeHalfWord addr bit byte m
-      )
+      (addr + fromIntegral bit, 1 - bit, writeHalfWord addr bit byte m)
     )
     (0, 0, mkMemory)
     bs
