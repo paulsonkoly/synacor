@@ -97,7 +97,7 @@ Testing the theory: indeed breaking on `b18` and setting the `aac` to one of tho
 
 ### Inventory
 
-Taking and dropping an item is even more interesting. Taking an item writes 0 to a new address, whereas dropping it writes the code of the current location of that address. So the implementation must be that we have a vector of items in memory, mapping items to rooms or 0 for inventory. Unfortunately the vector seems to be a structure instead of a pointer, so one has to figure out how large an item is. But 3 digit (no leading 0) location codes with leading 9 stand out easily in a memory dump from that region:
+Taking and dropping an item is even more interesting. Taking an item writes 0 to a new address, whereas dropping it writes the code of the current location to the same address. So the implementation must be that we have a vector of items in memory, mapping items to locations or 0 for inventory. Unfortunately the vector seems to hold structures instead of a mere pointer, so one has to figure out the memory span an item takes. But the 3 digit (no leading 0) location codes with leading 9 stand out easily in a memory dump from that region:
 
 ```
 % disass a6e 50
@@ -154,3 +154,211 @@ What do you do?
 ```
 
 So I just picked up a bunch of items without ever moving out of the first location!
+
+### Teleporter
+
+After using the teleporter we find a strange book that tells us some nonsense about the 8th register and its effect on teleporting.
+So let's do it again, but this time having a watch on 8007.
+
+```
+What do you do?
+% watch 8007
+% use teleporter
+
+
+watchpoint 8007 hit
+% regs
+ip : 154b
+r0: a94
+r1: 1545
+r2: 3
+r3: a
+r4: 65
+r5: 0
+r6: 0
+r7: 0
+% disass 154b 20
+154b    | JMPZ [r7] [15e5]
+154e    | PUSH [r0]
+1550    | PUSH [r1]
+1552    | PUSH [r2]
+1554    | SET r0 [70ac]
+1557    | SET r1 [5fb]
+155a    | ADD r2 [390] [1d7]
+155e    | CALL [5b2]
+1560    | POP r2
+1562    | POP r1
+1564    | POP r0
+1566    | NOOP
+1567    | NOOP
+1568    | NOOP
+1569    | NOOP
+156a    | NOOP
+156b    | SET r0 [4]
+156e    | SET r1 [1]
+1571    | CALL [178b]
+1573    | EQ r1 [r0] [6]
+1577    | JMPZ [r1] [15cb]
+157a    | PUSH [r0]
+157c    | PUSH [r1]
+157e    | PUSH [r2]
+1580    | SET r0 [7156]
+1583    | SET r1 [5fb]
+1586    | ADD r2 [ca4] [21d7]
+158a    | CALL [5b2]
+158c    | POP r2
+158e    | POP r1
+1590    | POP r0
+[..]
+```
+
+So by some experimenting we can see that the jump at `154b` controls if the teleporter simply takes us to the normal location or does something else.
+Since the normal path is jumping to `15e5` let's see what happens if we jump to `154e`.
+
+```
+% jump 154e
+% cont
+A strange, electronic voice is projected into your mind:
+
+  "Unusual setting detected!  Starting confirmation process!  Estimated time to completion: 1 billion years."
+
+watchpoint 8007 hit
+% regs
+ip : 179a
+r0: 3
+r1: 0
+r2: 3
+r3: a
+r4: 65
+r5: 0
+r6: 0
+r7: 0
+```
+
+By looking around 179a we find ourself in a weird recursive function that seems to start at `178b`.
+
+```
+% disass 178b 16
+178b    | JMPNZ [r0] [1793]
+178e    | ADD r0 [r1] [1]
+1792    | RET
+1793    | JMPNZ [r1] [17a0]
+1796    | ADD r0 [r0] [7fff]
+179a    | SET r1 [r7]          ; <- IP
+179d    | CALL [178b]
+179f    | RET
+17a0    | PUSH [r0]
+17a2    | ADD r1 [r1] [7fff]
+17a6    | CALL [178b]
+17a8    | SET r1 [r0]
+17ab    | POP r0
+17ad    | ADD r0 [r0] [7fff]
+17b1    | CALL [178b]
+17b3    | RET
+```
+
+A pseudo code translation might look like:
+
+```
+f(r0, r1)
+{
+  if r0 /= 0 {
+    if r1 /= 0 {
+      tmp = r0       // pushed on stack
+      r1 = r1 - 1
+      f(r0, r1)
+      r1 = r0
+      r0 = tmp       // pop
+      r0 = r0 - 1
+      f(r0, r1)
+    }
+    else {
+      r0 = r0 - 1
+      r1 = r7         // we are here when the watchpoint is hit
+      f(r0, r1)
+    }
+  }
+  else {
+    r0 = r1 + 1
+  }
+}
+```
+
+Instead of cracking this function I tried to avoid calling it in the first place. When we were looking at `154e` the code that first checked r7, I spotted the address of f() function at
+
+```
+1571    | CALL [178b]
+```
+
+So at this point lets go again but with a break on 1571.
+
+```
+% delwatch 8007
+% cont
+A strange, electronic voice is projected into your mind:
+
+  "Miscalibration detected!  Aborting teleportation!"
+
+Nothing else seems to happen.
+
+
+What do you do?
+```
+
+Now without stopping for `r7` access we need two break points, we want to take the non-normal (`r7 /= 0`) path and we want to avoid calling `178b`.
+
+
+```
+% break 1571
+% break 154b
+% use teleporter
+
+
+breakpoint 154b hit
+% disass 154b 2
+154b    | JMPZ [r7] [15e5]
+154e    | PUSH [r0]
+
+% jump 154e
+% cont
+A strange, electronic voice is projected into your mind:
+
+  "Unusual setting detected!  Starting confirmation process!  Estimated time to completion: 1 billion years."
+
+breakpoint 1571 hit
+% disass 1571 10
+1571    | CALL [178b]
+1573    | EQ r1 [r0] [6]
+1577    | JMPZ [r1] [15cb]
+157a    | PUSH [r0]
+157c    | PUSH [r1]
+157e    | PUSH [r2]
+1580    | SET r0 [7156]
+1583    | SET r1 [5fb]
+1586    | ADD r2 [ca4] [21d7]
+158a    | CALL [5b2]
+
+% jump 1573
+% set 8000 6
+% set 8001 5
+% cont
+You wake up on a sandy beach with a slight headache.  The last thing you remember is activating that teleporter... but now you can't find it anywhere in your pack.  Someone seems to have drawn a message in the sand here:
+
+    ************
+
+It begins to rain.  The message washes away.  You take a deep breath and feel firmly grounded in reality as the effects of the teleportation wear off.
+
+== Beach ==
+This is a sandy beach in a cove on some tropical island.  It is raining.  The ocean is to your south, and heavy foliage is to your north; the beach extends west and east.
+
+There are 3 exits:
+- west
+- east
+- north
+
+What do you do?
+% 
+```
+
+I set `r0` to 6 because that's what the code checks, and `r1` to 5 because f() would return such value. I'm not sure if the latter is needed at all.
+
