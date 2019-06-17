@@ -75,13 +75,17 @@ runMachineIO = go "" (StepIn Nothing (Set.singleton 0) Set.empty)
           (m', _       ) -> go iString sin m
       Just line
         | "disass" `isPrefixOf` line
-        -> let [_, addr, count] = words line
-           in  do
+        -> case words line of
+          [_, addr, count] -> 
+           do
                  case (readHex addr, reads count) of
                    ([(addr', "")], [(count', "")]) ->
                      putStrLn $ T.unpack $ disassCount addr' count' memory
                    _ -> putStrLn "invalid input"
                  ioLoop iString sin m
+          _ -> do
+            putStrLn "invalid input"
+            ioLoop iString sin m
         | "set" `isPrefixOf` line
         -> let [_, addr, value] = words line
            in  do
