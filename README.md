@@ -155,6 +155,14 @@ What do you do?
 
 So I just picked up a bunch of items without ever moving out of the first location!
 
+### The ruin challenge
+
+Even though this simply gives us the teleporter, which we can obtain by hacking the inventory, we can also crack the ruins challenge. We insert the coins into the round slots of the riddle, and as we do so the coins become numbers in a formula that we have to make true. It's simply a permutations of the 5 numbers the coins represent substituted in. A Ruby expression that gives the right order:
+
+```
+p [2, 9, 5, 3, 7].permutation.select { |(a, b, c, d, e)|  a + b * c**2 + d**3 - e == 399 }
+```
+
 ### Teleporter
 
 After using the teleporter we find a strange book that tells us some nonsense about the 8th register and its effect on teleporting.
