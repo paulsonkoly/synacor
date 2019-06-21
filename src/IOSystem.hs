@@ -6,6 +6,7 @@ where
 
 import           Numeric
 import qualified Data.Set                      as Set
+import           Data.Char
 import           Data.Word
 import qualified Data.Text                     as T
 import           Data.List
@@ -24,26 +25,28 @@ runMachineIO :: Machine -> IO ()
 runMachineIO = go "" (StepIn Nothing (Set.singleton 0) Set.empty)
  where
   go :: String -> StepIn -> Machine -> IO ()
-  go iString sin m = 
-    let sin' = sin { input = Nothing }
-    in case step sin m of
-      (m', Continue) -> do
-        putStr $ reverse $ output m'
-        go iString sin' (m' { output = [] })
-      (_ , Halt ) -> return ()
-      (m', Input) -> case iString of
-        ""     ->
-          ioLoop "" sin' m
-        c : cs -> go cs sin { input = Just c } m
-      (_, Break ip) -> do
-        putStrLn $ "breakpoint " ++ showHex ip "" ++ " hit"
-        ioLoop iString sin' m
-      (_, Watch addr) -> do
-        putStrLn $ "watchpoint " ++ showHex addr "" ++ " hit"
-        ioLoop iString sin' m
-      (_, Invalid ip opcode) -> do
-        putStrLn $ "invalid opcode " ++ showHex ip "" ++ " " ++ showHex opcode ""
-        ioLoop iString sin' m
+  go iString sin m
+    = let sin' = sin { input = Nothing }
+      in
+        case step sin m of
+          (m', Continue) -> do
+            putStr $ reverse $ output m'
+            go iString sin' (m' { output = [] })
+          (_ , Halt ) -> return ()
+          (m', Input) -> case iString of
+            ""     -> ioLoop "" sin' m
+            c : cs -> go cs sin { input = Just c } m
+          (_, Break ip) -> do
+            putStrLn $ "breakpoint " ++ showHex ip "" ++ " hit"
+            ioLoop iString sin' m
+          (_, Watch addr) -> do
+            putStrLn $ "watchpoint " ++ showHex addr "" ++ " hit"
+            ioLoop iString sin' m
+          (_, Invalid ip opcode) -> do
+            putStrLn $ "invalid opcode " ++ showHex ip "" ++ " " ++ showHex
+              opcode
+              ""
+            ioLoop iString sin' m
   ioLoop iString sin m@(Machine ip memory stack out) = do
     mbLine <- readline "% "
     case mbLine of
@@ -64,10 +67,10 @@ runMachineIO = go "" (StepIn Nothing (Set.singleton 0) Set.empty)
       Just "watches" -> do
         forM_ (watches sin) $ putStrLn . flip showHex ""
         ioLoop iString sin m
-      Just "cont" -> 
+      Just "cont" ->
         case step (sin { breaks = Set.empty, watches = Set.empty }) m of
           (m', Continue) -> go iString sin m'
-          (m', _)        -> ioLoop iString sin m'
+          (m', _       ) -> ioLoop iString sin m'
       Just "step" -> do
         putStrLn $ T.unpack $ disassCount ip 1 memory
         case step (sin { breaks = Set.empty, watches = Set.empty }) m of
@@ -76,13 +79,25 @@ runMachineIO = go "" (StepIn Nothing (Set.singleton 0) Set.empty)
       Just line
         | "disass" `isPrefixOf` line
         -> case words line of
-          [_, addr, count] -> 
-           do
-                 case (readHex addr, reads count) of
-                   ([(addr', "")], [(count', "")]) ->
-                     putStrLn $ T.unpack $ disassCount addr' count' memory
-                   _ -> putStrLn "invalid input"
-                 ioLoop iString sin m
+          [_, addr, count] -> do
+            case (readHex addr, reads count) of
+              ([(addr', "")], [(count', "")]) ->
+                putStrLn $ T.unpack $ disassCount addr' count' memory
+              _ -> putStrLn "invalid input"
+            ioLoop iString sin m
+          _ -> do
+            putStrLn "invalid input"
+            ioLoop iString sin m
+        | "string" `isPrefixOf` line
+        -> case words line of
+          [_, addr, count] -> do
+            case (readHex addr, reads count) of
+              ([(addr', "")], [(count', "")]) -> putStrLn
+                [ chr $ fromIntegral $ readWord ix memory
+                | ix <- [addr' .. addr' + count' - 1]
+                ]
+              _ -> putStrLn "invalid input"
+            ioLoop iString sin m
           _ -> do
             putStrLn "invalid input"
             ioLoop iString sin m

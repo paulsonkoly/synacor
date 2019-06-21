@@ -93,7 +93,25 @@ One can give the program input, and examine how the state of the VM changes afte
 Here we can assume that `912` (all numbers are in hex) is the code of the current location. By moving around we can discover more rooms:
 `90d`, `917`, `91c` written into `aac` etc.
 
-Testing the theory: indeed breaking on `b18` and setting the `aac` to one of those values and `aad` to 0 ( not sure why the latter is needed, but the binary does it so we can do it too ), allows us to jump to an arbitrary location.
+Testing the theory: setting the `aac` to one of those values and `aad` to 0 ( not sure why the latter is needed, but the binary does it so we can do it too ), allows us to jump to an arbitrary location.
+
+#### Listing location strings.
+
+By looking at the 5 word repeating pattern of how rooms are stored at address `90d`, one can assume that the string pointer for the room text is one of the words. 
+
+```
+% disass 90d 30
+DATA : 17fe(៾) 1808(᠈) 6914(椔) 6917(椗) 0 18ce(ᣎ) 18d8(ᣘ) 691a(椚) 691c(検) 0 1929(ᤩ) 1933(ᤳ) 691e(椞) 6921(椡) 0 19c5(ᧅ) 19cf(᧏) 6924(椤) 6927(椧) 0 1a37(ᨷ) 1a41(ᩁ) 692a(椪) 692d(椭) 0 1b0a(ᬊ) 1b16(ᬖ) 6930(椰) 6933(椳) 0
+```
+
+By examining the first address we can find the string:
+
+```
+% string 17fe 100
+	Foothills·You find yourself standing at the base of an enormous mountain.  At its base to the north
+```
+
+and by reading that memory further one can peek into all rooms.
 
 ### Inventory
 
