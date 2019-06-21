@@ -34,6 +34,9 @@ __All numbers are in hex without the leading 0x prefix unless indicated otherwis
 <dt>disass [addr] [count] (count decimal)</dt>
 <dd>disassembles code or data from addr taking count number of 16 bit words.</dd>
 
+<dt>string [addr] [count] (count decimal)</dt>
+<dd>assumes that addr stores ascii string (in the low half of the 16 bit words) and prints count number of characters.</dd>
+
 <dt>set [addr] [value]</dt>
 <dd>writes address with value (0x8000 is r0)</dd>
 
