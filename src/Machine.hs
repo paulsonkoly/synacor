@@ -52,27 +52,28 @@ data StepIn = StepIn
   { input   :: Maybe Char
   , breaks  :: Set.Set Word16
   , watches :: Set.Set Word16
+  , traceST :: Bool
   }
 
 
 addBreak :: Word16 -> StepIn -> StepIn
-addBreak addr (StepIn input breaks watches) =
-  StepIn input (Set.insert addr breaks) watches
+addBreak addr (StepIn input breaks watches traceST) =
+  StepIn input (Set.insert addr breaks) watches traceST
 
 
 delBreak :: Word16 -> StepIn -> StepIn
-delBreak addr (StepIn input breaks watches) =
-  StepIn input (Set.delete addr breaks) watches
+delBreak addr (StepIn input breaks watches traceST) =
+  StepIn input (Set.delete addr breaks) watches traceST
 
 
 addWatch :: Word16 -> StepIn -> StepIn
-addWatch addr (StepIn input breaks watches) =
-  StepIn input breaks (Set.insert addr watches)
+addWatch addr (StepIn input breaks watches traceST) =
+  StepIn input breaks (Set.insert addr watches) traceST
 
 
 delWatch :: Word16 -> StepIn -> StepIn
-delWatch addr (StepIn input breaks watches) =
-  StepIn input breaks (Set.delete addr watches)
+delWatch addr (StepIn input breaks watches traceST) =
+  StepIn input breaks (Set.delete addr watches) traceST
 
 
 data StepOut
@@ -191,8 +192,16 @@ machineOpMatrix = V.fromList
   , OpCode
     "ST"
     [RegAttr, RegAttr]
-    (\[attr0, attr1] m@(Machine ip memory stack out) _ ->
-      (m { memory = writeWord attr0 attr1 memory }, Continue)
+    (\[attr0, attr1] m@(Machine ip memory stack out) sin ->
+      let
+        trace = if traceST sin
+          then showHex attr0 "" ++ " <- " ++ showHex attr1 "" ++ "\n"
+          else ""
+      in  ( m { memory = writeWord attr0 attr1 memory
+              , output = trace
+              }
+          , Continue
+          )
     )
   , OpCode
     "CALL"
@@ -226,7 +235,7 @@ machineOpMatrix = V.fromList
   ]
 
 step :: StepIn -> Machine -> (Machine, StepOut)
-step sin@(StepIn mbInput breaks watches) m@(Machine ip memory stack out) =
+step sin@(StepIn mbInput breaks watches _) m@(Machine ip memory stack out) =
   if ip `Set.member` breaks
     then (m, Break ip)
     else

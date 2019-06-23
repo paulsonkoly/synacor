@@ -22,7 +22,7 @@ boot fp = do
 
 
 runMachineIO :: Machine -> IO ()
-runMachineIO = go "" (StepIn Nothing (Set.singleton 0) Set.empty)
+runMachineIO = go "" (StepIn Nothing (Set.singleton 0) Set.empty False)
  where
   go :: String -> StepIn -> Machine -> IO ()
   go iString sin m
@@ -30,7 +30,7 @@ runMachineIO = go "" (StepIn Nothing (Set.singleton 0) Set.empty)
       in
         case step sin m of
           (m', Continue) -> do
-            putStr $ reverse $ output m'
+            putStr $ output m'
             go iString sin' (m' { output = [] })
           (_ , Halt ) -> return ()
           (m', Input) -> case iString of
@@ -76,6 +76,11 @@ runMachineIO = go "" (StepIn Nothing (Set.singleton 0) Set.empty)
         case step (sin { breaks = Set.empty, watches = Set.empty }) m of
           (m', Continue) -> ioLoop iString sin m'
           (m', _       ) -> go iString sin m
+      Just "tracest" ->
+        let trace' = not $ traceST sin
+        in  do
+              putStrLn $ "tracing stores is " ++ if trace' then "on" else "off"
+              ioLoop iString sin { traceST = trace' } m
       Just line
         | "disass" `isPrefixOf` line
         -> case words line of

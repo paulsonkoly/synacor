@@ -54,6 +54,9 @@ __All numbers are in hex without the leading 0x prefix unless indicated otherwis
 
 <dt>jump [addr]</dt>
 <dd>writes addr into the IP</dd>
+
+<dt>tracest</dt>
+<dd>toggles tracing memory stores with ST instruction</dd>
 </dl>
 
 # SPOILER ALERT
