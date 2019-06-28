@@ -21,6 +21,12 @@ description:         Please see the README on GitHub at <https://github.com/phau
 
 dependencies:
 - base >= 4.7 && < 5
+- containers
+- vector
+- bytestring
+- mtl
+- text
+- readline
 
 library:
   source-dirs: src
@@ -29,17 +35,6 @@ executables:
   synacor-exe:
     main:                Main.hs
     source-dirs:         app
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - synacor
-
-tests:
-  synacor-test:
-    main:                Spec.hs
-    source-dirs:         test
     ghc-options:
     - -threaded
     - -rtsopts
