@@ -27,8 +27,12 @@ dependencies:
 - mtl
 - text
 - readline
+- microlens-th
+- microlens
 
 library:
+  ghc-options:
+  - -Wall
   source-dirs: src
 
 executables:

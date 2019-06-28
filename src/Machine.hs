@@ -1,12 +1,18 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Machine
-  ( Machine(..)
-  , StepIn(..)
-  , addBreak
-  , delBreak
-  , addWatch
-  , delWatch
+  ( Machine
+  , ip
+  , memory
+  , stack
+  , output
+  , StepIn
+  , mkStepIn
+  , input
+  , breaks
+  , watches
+  , traceST
   , StepOut(..)
   , mkMachine
   , step
@@ -19,62 +25,27 @@ import           Data.Word
 import           Data.Bits
 import           Data.Char
 import qualified Data.Text                     as Text
-import           Control.Monad.State
 import           Memory
-import           Data.Tuple
 import           Numeric
 import qualified Data.Vector                   as V
 import qualified Data.Set                      as Set
+import           Lens.Micro
+import           Lens.Micro.TH
 
 data Machine = Machine
-  { ip     :: Word16
-  , memory :: Memory
-  , stack  :: [Word16]
-  , output :: String
+  { _ip     :: Word16
+  , _memory :: Memory
+  , _stack  :: [Word16]
+  , _output :: String
   }
 
+makeLenses ''Machine
 
 mkMachine :: Machine
 mkMachine = Machine 0 mkMemory [] []
 
 
 data Attr = WordAttr | RegAttr
-
-
-data OpCode = OpCode
-  { name       :: Text.Text
-  , attributes :: [Attr]
-  , microcode  :: [Word16] -> Machine -> StepIn -> (Machine, StepOut)
-  }
-
-
-data StepIn = StepIn
-  { input   :: Maybe Char
-  , breaks  :: Set.Set Word16
-  , watches :: Set.Set Word16
-  , traceST :: Bool
-  }
-
-
-addBreak :: Word16 -> StepIn -> StepIn
-addBreak addr (StepIn input breaks watches traceST) =
-  StepIn input (Set.insert addr breaks) watches traceST
-
-
-delBreak :: Word16 -> StepIn -> StepIn
-delBreak addr (StepIn input breaks watches traceST) =
-  StepIn input (Set.delete addr breaks) watches traceST
-
-
-addWatch :: Word16 -> StepIn -> StepIn
-addWatch addr (StepIn input breaks watches traceST) =
-  StepIn input breaks (Set.insert addr watches) traceST
-
-
-delWatch :: Word16 -> StepIn -> StepIn
-delWatch addr (StepIn input breaks watches traceST) =
-  StepIn input breaks (Set.delete addr watches) traceST
-
 
 data StepOut
   = Break Word16          -- ^ breakpoint hit
@@ -85,206 +56,208 @@ data StepOut
   | Invalid Word16 Word16 -- ^ invalid opcode
 
 
+data OpCode = OpCode
+  { _name       :: Text.Text
+  , _attributes :: [Attr]
+  , _microcode  :: [Word16] -> Machine -> StepIn -> (Machine, StepOut)
+  }
+
+
+data StepIn = StepIn
+  { _input   :: Maybe Char
+  , _breaks  :: Set.Set Word16
+  , _watches :: Set.Set Word16
+  , _traceST :: Bool
+  }
+
+makeLenses ''StepIn
+
+mkStepIn :: StepIn
+mkStepIn = StepIn Nothing Set.empty Set.empty False
+
+
 machineOpMatrix :: V.Vector OpCode
 machineOpMatrix = V.fromList
   [ OpCode "HALT" [] (\_ m _ -> (m, Halt))
   , OpCode
     "SET"
     [WordAttr, RegAttr]
-    (\[attr0, attr1] m@(Machine ip memory stack out) _ ->
-      (m { memory = writeWord attr0 attr1 memory }, Continue)
-    )
-  , OpCode
-    "PUSH"
-    [RegAttr]
-    (\[attr0] m@(Machine ip memory stack out) _ ->
-      (m { stack = attr0 : stack }, Continue)
-    )
+    (\[attr0, attr1] m _ -> (m & memory %~ writeWord attr0 attr1, Continue))
+  , OpCode "PUSH" [RegAttr] (\[attr0] m _ -> (m & stack %~ (attr0 :), Continue))
   , OpCode
     "POP"
     [WordAttr]
-    (\[attr0] m@(Machine ip memory stack out) _ ->
-      ( m { memory = writeWord attr0 (head stack) memory, stack = tail stack }
+    (\[attr0] m _ ->
+      ( m & memory %~ writeWord attr0 (head $ m ^. stack) & stack %~ tail
       , Continue
       )
     )
   , OpCode
     "EQ"
     [WordAttr, RegAttr, RegAttr]
-    (\[attr0, attr1, attr2] m@(Machine ip memory stack out) _ ->
+    (\[attr0, attr1, attr2] m _ ->
       let value = if attr1 == attr2 then 1 else 0
-      in  (m { memory = writeWord attr0 value memory }, Continue)
+      in  (m & memory %~ writeWord attr0 value, Continue)
     )
   , OpCode
     "GT"
     [WordAttr, RegAttr, RegAttr]
-    (\[attr0, attr1, attr2] m@(Machine ip memory stack out) _ ->
+    (\[attr0, attr1, attr2] m _ ->
       let value = if attr1 > attr2 then 1 else 0
-      in  (m { memory = writeWord attr0 value memory }, Continue)
+      in  (m & memory %~ writeWord attr0 value, Continue)
     )
-  , OpCode
-    "JMP"
-    [RegAttr]
-    (\[attr0] m@(Machine ip memory stack out) _ -> (m { ip = attr0 }, Continue))
+  , OpCode "JMP" [RegAttr] (\[attr0] m _ -> (m & ip .~ attr0, Continue))
   , OpCode
     "JMPNZ"
     [RegAttr, RegAttr]
-    (\[attr0, attr1] m@(Machine ip memory stack out) _ ->
-      let ip' = if attr0 /= 0 then attr1 else ip in (m { ip = ip' }, Continue)
+    (\[attr0, attr1] m _ ->
+      let jmp same = if attr0 /= 0 then attr1 else same
+      in  (m & ip %~ jmp, Continue)
     )
   , OpCode
     "JMPZ"
     [RegAttr, RegAttr]
-    (\[attr0, attr1] m@(Machine ip memory stack out) _ ->
-      let ip' = if attr0 == 0 then attr1 else ip in (m { ip = ip' }, Continue)
+    (\[attr0, attr1] m _ ->
+      let jmp same = if attr0 == 0 then attr1 else same
+      in  (m & ip %~ jmp, Continue)
     )
   , OpCode
     "ADD"
     [WordAttr, RegAttr, RegAttr]
-    (\[attr0, attr1, attr2] m@(Machine ip memory stack out) _ ->
+    (\[attr0, attr1, attr2] m _ ->
       let value = (attr1 + attr2) .&. 0x7fff
-      in  (m { memory = writeWord attr0 value memory }, Continue)
+      in  (m & memory %~ writeWord attr0 value, Continue)
     )
   , OpCode
     "MUL"
     [WordAttr, RegAttr, RegAttr]
-    (\[attr0, attr1, attr2] m@(Machine ip memory stack out) _ ->
+    (\[attr0, attr1, attr2] m _ ->
       let value = (attr1 * attr2) .&. 0x7fff
-      in  (m { memory = writeWord attr0 value memory }, Continue)
+      in  (m & memory %~ writeWord attr0 value, Continue)
     )
   , OpCode
     "MOD"
     [WordAttr, RegAttr, RegAttr]
-    (\[attr0, attr1, attr2] m@(Machine ip memory stack out) _ ->
+    (\[attr0, attr1, attr2] m _ ->
       let value = (attr1 `mod` attr2) .&. 0x7fff
-      in  (m { memory = writeWord attr0 value memory }, Continue)
+      in  (m & memory %~ writeWord attr0 value, Continue)
     )
   , OpCode
     "AND"
     [WordAttr, RegAttr, RegAttr]
-    (\[attr0, attr1, attr2] m@(Machine ip memory stack out) _ ->
+    (\[attr0, attr1, attr2] m _ ->
       let value = attr1 .&. attr2
-      in  (m { memory = writeWord attr0 value memory }, Continue)
+      in  (m & memory %~ writeWord attr0 value, Continue)
     )
   , OpCode
     "OR"
     [WordAttr, RegAttr, RegAttr]
-    (\[attr0, attr1, attr2] m@(Machine ip memory stack out) _ ->
+    (\[attr0, attr1, attr2] m _ ->
       let value = attr1 .|. attr2
-      in  (m { memory = writeWord attr0 value memory }, Continue)
+      in  (m & memory %~ writeWord attr0 value, Continue)
     )
   , OpCode
     "FLIP"
     [WordAttr, RegAttr]
-    (\[attr0, attr1] m@(Machine ip memory stack out) _ ->
+    (\[attr0, attr1] m _ ->
       let value = complement attr1 .&. 0x7fff
-      in  (m { memory = writeWord attr0 value memory }, Continue)
+      in  (m & memory %~ writeWord attr0 value, Continue)
     )
   , OpCode
     "LD"
     [WordAttr, RegAttr]
-    (\[attr0, attr1] m@(Machine ip memory stack out) sin ->
-      let value = readWord attr1 memory
-      in  if attr1 `Set.member` watches sin
+    (\[attr0, attr1] m inp ->
+      let value = readWord attr1 $ m ^. memory
+      in  if attr1 `Set.member` (inp ^. watches)
             then (m, Watch attr1)
-            else (m { memory = writeWord attr0 value memory }, Continue)
+            else (m & memory %~ writeWord attr0 value, Continue)
     )
   , OpCode
     "ST"
     [RegAttr, RegAttr]
-    (\[attr0, attr1] m@(Machine ip memory stack out) sin ->
-      let
-        trace = if traceST sin
-          then showHex attr0 "" ++ " <- " ++ showHex attr1 "" ++ "\n"
-          else ""
-      in  ( m { memory = writeWord attr0 attr1 memory
-              , output = trace
-              }
-          , Continue
-          )
+    (\[attr0, attr1] m inp ->
+      let trace = if inp ^. traceST
+            then showHex attr0 "" ++ " <- " ++ showHex attr1 "" ++ "\n"
+            else ""
+      in  (m & memory %~ writeWord attr0 attr1 & output .~ trace, Continue)
     )
   , OpCode
     "CALL"
     [RegAttr]
-    (\[attr0] m@(Machine ip memory stack out) _ ->
-      (m { ip = attr0, stack = ip : stack }, Continue)
-    )
+    (\[attr0] m _ -> (m & ip .~ attr0 & stack %~ (m ^. ip :), Continue))
   , OpCode
     "RET"
     []
-    (\[] m@(Machine ip memory stack out) _ -> case stack of
+    (\[] m _ -> case m ^. stack of
       []           -> (m, Halt)
-      (x : stack') -> (m { ip = x, stack = stack' }, Continue)
+      (x : stack') -> (m & ip .~ x & stack .~ stack', Continue)
     )
   , OpCode
     "OUT"
     [RegAttr]
-    (\[attr0] m@(Machine ip memory stack out) _ ->
-      (m { output = chr (fromIntegral attr0) : out }, Continue)
-    )
+    (\[attr0] m _ -> (m & output %~ (chr (fromIntegral attr0) :), Continue))
   , OpCode
     "IN"
     [WordAttr]
-    (\[attr0] m@(Machine ip memory stack out) sin -> case input sin of
+    (\[attr0] m inp -> case inp ^. input of
       Just c ->
         let value = fromIntegral $ ord c
-        in  (m { memory = writeWord attr0 value memory }, Continue)
-      Nothing -> (m { ip = ip - 2 }, Input)
+        in  (m & memory %~ writeWord attr0 value, Continue)
+      Nothing -> (m & ip -~ 2, Input)
     )
-  , OpCode "NOOP" [] (\[] m@(Machine ip memory stack out) _ -> (m, Continue))
+  , OpCode "NOOP" [] (\[] m _ -> (m, Continue))
   ]
 
 step :: StepIn -> Machine -> (Machine, StepOut)
-step sin@(StepIn mbInput breaks watches _) m@(Machine ip memory stack out) =
-  if ip `Set.member` breaks
-    then (m, Break ip)
-    else
-      let instr = readWord ip memory
-      in  if instr <= 21
-            then
-              let (OpCode _ attrs micro) =
-                    machineOpMatrix V.! fromIntegral instr
-                  attrs'  = zipWith fetch [1, 2 ..] attrs
-                  attrs'' = map resolve attrs'
-                  hits    = filter checkWatch attrs'
-                  m'      = m { ip = ip + fromIntegral (length attrs) + 1 }
-              in  case hits of
-                    []         -> micro attrs'' m' sin
-                    (_, x) : _ -> (m, Watch x)
-            else (m, Invalid ip instr)
+step inp m = if (m ^. ip) `Set.member` (inp ^. breaks)
+  then (m, Break $ m ^. ip)
+  else
+    let instr = readWord (m ^. ip) (m ^. memory)
+    in  if instr <= 21
+          then
+            let (OpCode _ attrs micro) = machineOpMatrix V.! fromIntegral instr
+                attrs'                 = zipWith fetch [1, 2 ..] attrs
+                attrs''                = map resolve attrs'
+                hits                   = filter checkWatch attrs'
+                m' = m & ip +~ fromIntegral (length attrs + 1)
+            in  case hits of
+                  []         -> micro attrs'' m' inp
+                  (_, x) : _ -> (m, Watch x)
+          else (m, Invalid (m ^. ip) instr)
  where
-  fetch ix WordAttr = (WordAttr, readWord (ip + ix) memory)
-  fetch ix RegAttr  = (RegAttr, readWord (ip + ix) memory)
-  checkWatch (WordAttr, addr ) = addr `Set.member` watches
-  checkWatch (RegAttr , value) = isRegister value && value `Set.member` watches
+  fetch off WordAttr = (WordAttr, readWord (m ^. ip + off) $ m ^. memory)
+  fetch off RegAttr  = (RegAttr, readWord (m ^. ip + off) $ m ^. memory)
+  checkWatch (WordAttr, addr) = addr `Set.member` (inp ^. watches)
+  checkWatch (RegAttr, value) =
+    isRegister value && value `Set.member` (inp ^. watches)
   resolve (WordAttr, addr) = addr
   resolve (RegAttr, value) =
-    if isRegister value then readWord value memory else value
+    if isRegister value then readWord value $ m ^. memory else value
   isRegister value = testBit value 15
 
 
 disassCount :: Word16 -> Int -> Memory -> Text.Text
-disassCount addr 0 memory = ""
-disassCount addr n memory =
-  let instr              = readWord addr memory
+disassCount _ 0 _ = ""
+disassCount addr n mem =
+  let instr              = readWord addr mem
       (OpCode _ attrs _) = machineOpMatrix V.! fromIntegral instr
       size               = fromIntegral $ length attrs + 1
   in  if instr <= 21
         then
           Text.justifyLeft 8 ' ' (Text.pack (showHex addr ""))
           <> "| "
-          <> disass addr memory
+          <> disass addr mem
           <> "\n"
-          <> disassCount (addr + size) (n - 1) memory
+          <> disassCount (addr + size) (n - 1) mem
         else "DATA : " <> Text.intercalate " " (map transform [0 .. n - 1])
  where
-  transform ix =
-    let value = readWord (addr + fromIntegral ix) memory in dumpChar value
+  transform off =
+    let value = readWord (addr + fromIntegral off) mem in dumpChar value
 
 
 disass :: Word16 -> Memory -> Text.Text
-disass addr memory =
-  let instr = readWord addr memory
+disass addr mem =
+  let instr = readWord addr mem
   in  if instr <= 21
         then
           let (OpCode name attrs _) = machineOpMatrix V.! fromIntegral instr
@@ -292,9 +265,9 @@ disass addr memory =
           in  name <> " " <> Text.intercalate " " attrs'
         else "DATA : " <> dumpChar instr
  where
-  resolve ix RegAttr = "[" <> resolve ix WordAttr <> "]"
-  resolve ix WordAttr =
-    let r = readWord (addr + ix) memory
+  resolve off RegAttr = "[" <> resolve off WordAttr <> "]"
+  resolve off WordAttr =
+    let r = readWord (addr + off) mem
     in  if 0x8000 <= r && r <= 0x8007
           then "r" <> Text.pack (show $ r - 0x8000)
           else Text.pack (showHex r "")
